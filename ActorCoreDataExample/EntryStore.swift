@@ -57,8 +57,11 @@ actor EntryStore {
     }
 
     func addEntry() async {
-        let maxValue = await self.maxValue()
         await self.performCoreDataOperation {
+            let fetchRequest: NSFetchRequest<Entry> = Entry.fetchRequest()
+            let entries = try! self.objectContext.fetch(fetchRequest)
+            let maxValue = (entries.map(\.value).max() ?? 0)
+
             let entry = Entry.create(in: self.objectContext)
             entry.value = maxValue + 1
             try! self.objectContext.save()

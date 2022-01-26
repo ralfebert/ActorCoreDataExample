@@ -19,7 +19,7 @@ class EntryModel: ObservableObject, EntryStoreObserver {
     }
 
     func updateFromStore() async {
-        self.entries = await self.store.allEntries
+        self.entries = await self.store.allEntries()
     }
 }
 
@@ -48,21 +48,34 @@ actor EntryStore {
         self.stateObserver = observer
     }
 
+    func performCoreDataOperation<T>(_ block: @escaping () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            objectContext.perform {
+                continuation.resume(returning: block())
+            }
+        }
+    }
+
     func addEntry() async {
-        let entry = Entry.create(in: self.objectContext)
-        entry.value = self.maxValue + 1
-        try! self.objectContext.save()
+        let maxValue = await self.maxValue()
+        await self.performCoreDataOperation {
+            let entry = Entry.create(in: self.objectContext)
+            entry.value = maxValue + 1
+            try! self.objectContext.save()
+        }
         await self.fireOnChange()
     }
 
-    var allEntries: [Int] {
-        let fetchRequest: NSFetchRequest<Entry> = Entry.fetchRequest()
-        let entries = try! self.objectContext.fetch(fetchRequest)
-        return entries.map(\.value)
+    func allEntries() async -> [Int] {
+        await self.performCoreDataOperation {
+            let fetchRequest: NSFetchRequest<Entry> = Entry.fetchRequest()
+            let entries = try! self.objectContext.fetch(fetchRequest)
+            return entries.map(\.value)
+        }
     }
 
-    private var maxValue: Int {
-        self.allEntries.max() ?? 0
+    private func maxValue() async -> Int {
+        (await self.allEntries()).max() ?? 0
     }
 
     func fireOnChange() async {
